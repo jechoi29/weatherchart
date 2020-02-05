@@ -90,6 +90,7 @@ function Header() {
   return (
     <header className="App-header">
       <Input
+        label="Search a location"
         value={ctx.searchTerm}
         onChange={e => ctx.set({ searchTerm: e.target.value })}
         onKeyPress={e => {
