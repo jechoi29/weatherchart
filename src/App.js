@@ -2,14 +2,17 @@ import React, { useContext, useState } from "react";
 import "./App.css";
 import { Input, Button } from "antd";
 import { Bar } from "react-chartjs-2";
+import * as moment from "moment";
+const ButtonGroup = Button.Group;
 
+// everything accessible, no more props
+// single useState in the app
 const context = React.createContext();
 
 function App() {
-  // everything accessible, no more props
-  // single useState in the app
   const [state, setState] = useState({
-    searchTerm: ""
+    searchTerm: "",
+    mode: "hourly"
   });
   return (
     <context.Provider
@@ -26,26 +29,78 @@ function App() {
   );
 }
 
+const modes = ["hourly", "daily"];
+function Header() {
+  const ctx = useContext(context);
+  const { loading, searchTerm, mode } = ctx;
+  return (
+    <header className="App-header">
+      <Input
+        value={searchTerm}
+        disabled={loading}
+        onChange={e => ctx.set({ searchTerm: e.target.value })}
+        style={{ height: "3rem", fontSize: "2rem" }}
+        onKeyPress={e => {
+          if (e.key === "Enter" && searchTerm) search(ctx);
+        }}
+      />
+      <Button
+        style={{ marginLeft: 5, height: "3rem" }}
+        onClick={() => search(ctx)}
+        type="primary"
+        disabled={!searchTerm}
+        loading={loading}
+      >
+        Search
+      </Button>
+      <ButtonGroup style={{ marginLeft: 5, display: "flex" }}>
+        {modes.map(m => (
+          <Button
+            style={{ height: "3rem" }}
+            type={mode === m ? "primary" : "default"}
+            onClick={() => ctx.set({ mode: m })}
+          >
+            {cap(m)}
+          </Button>
+        ))}
+      </ButtonGroup>
+    </header>
+  );
+}
+
 function Body() {
   const ctx = useContext(context);
-  const { error, weather } = ctx;
-  console.log(weather);
+  const { error, weather, mode } = ctx;
   let data;
   if (weather) {
+    console.log(weather);
     data = {
-      labels: weather.daily.data.map(d => d.time),
+      labels: weather[mode].data.map(d => {
+        let format = "ddd";
+        if (mode === "hourly") format = "dd hh:mm";
+        // moment can take in any date format
+        return moment(d.time * 1000).format(format);
+      }),
       datasets: [
         {
-          data: weather.daily.data.map(d => d.temperatureHigh)
+          label: "Temperature",
+          data: weather[mode].data.map(d => {
+            if (mode === "hourly") return d.temperature;
+            else return (d.temperatureHigh + d.temperatureLow) / 2;
+          }),
+          backgroundColor: "rgba(132,99,255,0.2)",
+          borderColor: "rgba(132,99,255,1)",
+          hoverBackgroundColor: "rgba(132,99,255,0.4)",
+          hoverBorderColor: "rgba(132,99,255,1)"
         }
       ]
     };
   }
-
+  console.log(data);
   return (
     <div className="App-body">
       {error && <div className="error">{error}</div>}
-      {weather && (
+      {data && (
         <div>
           <Bar data={data} width={800} height={400} />
         </div>
@@ -54,61 +109,38 @@ function Body() {
   );
 }
 
-function Header() {
-  const ctx = useContext(context);
+async function search({ searchTerm, set }) {
+  try {
+    const term = searchTerm;
+    set({ error: "", loading: true });
 
-  async function search({ searchTerm, set }) {
-    try {
-      console.log(searchTerm);
-      const term = searchTerm;
-      set({ searchTerm: "", error: "" });
-
-      const openstreetmapurl = `https://nominatim.openstreetmap.org/search/${term}?format=json`;
-      const response = await fetch(openstreetmapurl);
-      const location = await response.json();
-      // see how the response look
-      // console.log(location);
-      if (!location[0]) {
-        return set({ error: "No city matching the query" });
-      }
-      const city = location[0];
-      console.log(city.lat, city.lon);
-
-      const key = "2d7b060918a044cf76642a063bbe532a";
-      // embed variables into string
-      // must build our own proxy server
-      const darkskyurl = `https://cors-anywhere.herokuapp.com/https://api.darksky.net/forecast/${key}/${city.lat},${city.lon}`;
-      const r2 = await fetch(darkskyurl);
-      const weather = await r2.json();
-      console.log(weather);
-      set({ weather });
-    } catch (e) {
-      set({ error: e.message });
+    const osmurl = `https://nominatim.openstreetmap.org/search/${term}?format=json`;
+    const r = await fetch(osmurl);
+    const loc = await r.json();
+    // see how the response look
+    // console.log(location);
+    if (!loc[0]) {
+      return set({ error: "No city matching that query" });
     }
-  }
+    const city = loc[0];
 
-  return (
-    <header className="App-header">
-      <Input
-        label="Search a location"
-        value={ctx.searchTerm}
-        onChange={e => ctx.set({ searchTerm: e.target.value })}
-        onKeyPress={e => {
-          if (e.key === "Enter") search(ctx);
-        }}
-        style={{ marginLeft: "0.2rem", height: "3rem", fontSize: "2rem" }}
-      />
-      <Button
-        onClick={() => search(ctx)}
-        // no search term, disable this button
-        disabled={!ctx.searchTerm}
-        type="primary"
-        style={{ marginLeft: "0.5rem", height: "3rem" }}
-      >
-        Search
-      </Button>
-    </header>
-  );
+    // the api index.js does the backend stuff
+    const url = `/api?lat=${city.lat}&lon=${city.lon}`;
+
+    // embed variables into string
+    // must build our own proxy server
+    // do not need this cors anymore that someone else made
+    // const url = `https://cors-anywhere.herokuapp.com/https://api.darksky.net/forecast/${key}/${city.lat},${city.lon}`;
+    const r2 = await fetch(url);
+    const weather = await r2.json();
+    set({ weather, loading: false, searchTerm: "" });
+  } catch (e) {
+    set({ error: e.message });
+  }
 }
 
 export default App;
+
+function cap(string) {
+  return string.charAt(0).toUpperCase() + string.slice(1);
+}
