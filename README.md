@@ -1,4 +1,4 @@
-# Meme Maker
+# Weatherchart
 
 This app lets you create a weather chart!
 create-react-app weatherchart
